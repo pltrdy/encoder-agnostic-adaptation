@@ -187,6 +187,13 @@ def model_opts(parser):
               help="Size of windows in the cnn, the kernel_size is "
                    "(cnn_kernel_width, 1) in conv layer")
 
+    group.add("--decoder_sampling_greedy", action="store_true")
+    group.add("--decoder_sampling", "-decoder_sampling", type=float, default=0.0)
+    group.add("--decoder_sampling_validation", "-decoder_sampling_validation",default=0,
+              type=int, help="Value of k for validation sampling (0=no sampling)")
+    group.add("--parallel_sampling_k", "-parallel_sampling_k", type=int, default=0)
+
+
     group.add('--input_feed', '-input_feed', type=int, default=1,
               help="Feed the context vector at each time step as "
                    "additional input (via concatenation with the word "

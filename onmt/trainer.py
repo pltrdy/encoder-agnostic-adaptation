@@ -51,6 +51,12 @@ def build_trainer(opt, device_id, model, fields, optim, model_saver=None):
         n_gpu = 0
     gpu_verbose_level = opt.gpu_verbose_level
 
+    decoder_sampling = getattr(opt, "decoder_sampling", 0.0)
+    decoder_sampling_greedy = getattr(opt, "decoder_sampling_greedy", False)
+    decoder_sampling_validation = getattr(opt, "decoder_sampling_validation", 0)
+    parallel_sampling_k = getattr(opt, "parallel_sampling_k", 0)
+
+
     report_manager = onmt.utils.build_report_manager(opt)
     trainer = onmt.Trainer(model, train_loss, valid_loss, optim, trunc_size,
                            shard_size, opt.model_type, norm_method,
@@ -60,7 +66,11 @@ def build_trainer(opt, device_id, model, fields, optim, model_saver=None):
                            average_decay=average_decay,
                            average_every=average_every,
                            model_dtype=opt.model_dtype,
-                           gpt2_params_std=opt.gpt2_params_std)
+                           gpt2_params_std=opt.gpt2_params_std,
+                           decoder_sampling=decoder_sampling,
+                           decoder_sampling_greedy=decoder_sampling_greedy,
+                           decoder_sampling_validation=decoder_sampling_validation,
+                           parallel_sampling_k=parallel_sampling_k)
     return trainer
 
 
@@ -93,7 +103,16 @@ class Trainer(object):
                  trunc_size=0, shard_size=32, model_type='text',
                  norm_method="sents", grad_accum_count=1, n_gpu=1, gpu_rank=1,
                  gpu_verbose_level=0, report_manager=None, model_saver=None,
-                 average_decay=0, average_every=1, model_dtype='fp32', gpt2_params_std=-1):
+                 average_decay=0, average_every=1, model_dtype='fp32', gpt2_params_std=-1,
+                 decoder_sampling=0.0,
+                 decoder_sampling_greedy=False,
+                 decoder_sampling_validation=0,
+                 parallel_sampling_k=0):
+        self.decoder_sampling = decoder_sampling
+        self.decoder_sampling_greedy = decoder_sampling_greedy
+        self.decoder_sampling_validation = decoder_sampling_validation
+        self.parallel_sampling_k = parallel_sampling_k
+        
         # Basic attributes.
         self.model = model
         self.train_loss = train_loss
@@ -183,7 +202,7 @@ class Trainer(object):
         else:
             logger.info('Start training loop and validate every %d steps...',
                         valid_steps)
-
+        logger.info("Decoder sampling: %.3f" % self.decoder_sampling)
         total_stats = onmt.utils.Statistics()
         report_stats = onmt.utils.Statistics()
         self._start_report_manager(start_time=total_stats.start_time)
@@ -233,20 +252,26 @@ class Trainer(object):
                 report_stats)
 
             if valid_iter is not None and step % valid_steps == 0:
-                if self.gpu_verbose_level > 0:
-                    logger.info('GpuRank %d: validate step %d'
-                                % (self.gpu_rank, step))
-                valid_stats = self.validate(
-                    valid_iter, moving_average=self.moving_average)
-                if self.gpu_verbose_level > 0:
-                    logger.info('GpuRank %d: gather valid stat \
-                                step %d' % (self.gpu_rank, step))
-                valid_stats = self._maybe_gather_stats(valid_stats)
-                if self.gpu_verbose_level > 0:
-                    logger.info('GpuRank %d: report stat step %d'
-                                % (self.gpu_rank, step))
-                self._report_step(self.optim.learning_rate(),
-                                  step, valid_stats=valid_stats)
+                def _validate(decoder_sampling, valid_name="valid"):
+                    logger.info("Running validation with decoder_sampling=%f" % decoder_sampling)
+                    if self.gpu_verbose_level > 0:
+                        logger.info('GpuRank %d: validate step %d'
+                                    % (self.gpu_rank, step))
+                    valid_stats = self.validate(
+                        valid_iter, moving_average=self.moving_average,
+                        decoder_sampling=decoder_sampling)
+                    if self.gpu_verbose_level > 0:
+                        logger.info('GpuRank %d: gather valid stat \
+                                    step %d' % (self.gpu_rank, step))
+                    valid_stats = self._maybe_gather_stats(valid_stats)
+                    if self.gpu_verbose_level > 0:
+                        logger.info('GpuRank %d: report stat step %d'
+                                    % (self.gpu_rank, step))
+                    self._report_step(self.optim.learning_rate(),
+                                      step, valid_stats=valid_stats, valid_name=valid_name)
+                if self.decoder_sampling_validation != 0:
+                    _ = _validate(1.0, valid_name="valid_sampling")
+                valid_stats = _validate(0.0)
 
             if (self.model_saver is not None
                 and (save_checkpoint_steps != 0
@@ -263,7 +288,7 @@ class Trainer(object):
             self.model_saver.save(step, moving_average=self.moving_average)
         return total_stats
 
-    def validate(self, valid_iter, moving_average=None):
+    def validate(self, valid_iter, moving_average=None, decoder_sampling=0.0):
         """ Validate model.
             valid_iter: validate data iterator
         Returns:
@@ -297,6 +322,13 @@ class Trainer(object):
                                        else (batch.src, None)
 
                 # F-prop through the model.
+                assert batch.src_map is not None
+                valid_model.decoder._loss = self.valid_loss
+                valid_model.decoder._batch = batch
+                valid_model.decoder._decoder_sampling = decoder_sampling
+                valid_model.decoder._parallel_sampling_k = self.decoder_sampling_validation
+                valid_model.decoder._decoder_greedy = True
+                
                 outputs, attns = valid_model(src, tgt, src_lengths, 
                                              tgt_lengths=tgt_lengths)
 
@@ -353,6 +385,14 @@ class Trainer(object):
                 # 2. F-prop all but generator.
                 if self.grad_accum_count == 1:
                     self.optim.zero_grad()
+                
+                # EXPERIMENTAL DECODER SAMPLING
+                assert self.train_loss.tgt_vocab is not None
+                self.model.decoder._loss = self.train_loss
+                self.model.decoder._batch = batch
+                self.model.decoder._decoder_sampling = self.decoder_sampling
+                self.model.decoder._parallel_sampling_k = self.parallel_sampling_k
+                self.model.decoder._decoder_greedy = self.decoder_sampling_greedy
 
                 outputs, attns = self.model(src, tgt, src_lengths, bptt=bptt, tgt_lengths=tgt_lengths)
                 bptt = True
@@ -444,7 +484,7 @@ class Trainer(object):
                 multigpu=self.n_gpu > 1)
 
     def _report_step(self, learning_rate, step, train_stats=None,
-                     valid_stats=None):
+                     valid_stats=None, valid_name="valid"):
         """
         Simple function to report stats (if report_manager is set)
         see `onmt.utils.ReportManagerBase.report_step` for doc
@@ -452,4 +492,4 @@ class Trainer(object):
         if self.report_manager is not None:
             return self.report_manager.report_step(
                 learning_rate, step, train_stats=train_stats,
-                valid_stats=valid_stats)
+                valid_stats=valid_stats, valid_name=valid_name)

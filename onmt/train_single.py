@@ -40,7 +40,11 @@ def _tally_parameters(model, only_trainable=False):
 
 def configure_process(opt, device_id):
     if device_id >= 0:
-        torch.cuda.set_device(device_id)
+        try:
+            torch.cuda.set_device(device_id)
+        except RuntimeError:
+            print("device_id=%d" % device_id)
+            raise
     set_random_seed(opt.seed, device_id >= 0)
 
 
@@ -138,7 +142,7 @@ def main(opt, device_id):
 
     logger.info('* number of parameters: %d (%d)' % (n_params, n_params_t))
     _check_save_model_path(opt)
-
+    logger.info("Saving model to '%s'" % opt.save_model)
     if not opt.train_from and opt.gpt2_params_path is not None:
         checkpoint = None
 

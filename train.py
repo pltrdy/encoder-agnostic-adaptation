@@ -119,7 +119,7 @@ if __name__ == "__main__":
     output_dir = 'output/'+dataset_name+'/'+config_name+'_'+opt.run_name+'/'
     os.makedirs(output_dir, exist_ok=True)
 
-    setattr(opt, 'save_model', output_dir+'checkpoints/model')
+    # setattr(opt, 'save_model', output_dir+'checkpoints/model')
     setattr(opt, 'save_config', output_dir+'config.yml')
     setattr(opt, 'tensorboard_log_dir', 'output/'+dataset_name+'/tblogs/'+config_name+'_'+opt.run_name)
     parser.write_config_file(opt, [output_dir+'config.yml'])
