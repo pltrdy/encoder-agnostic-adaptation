@@ -52,6 +52,16 @@ def build_trainer(opt, device_id, model, fields, optim, model_saver=None):
     gpu_verbose_level = opt.gpu_verbose_level
 
     decoder_sampling = getattr(opt, "decoder_sampling", 0.0)
+    decoder_sampling_a = getattr(opt, "decoder_sampling_a", 0.0)
+    decoder_sampling_b = getattr(opt, "decoder_sampling_b", 0.0)
+    decoder_sampling_w = getattr(opt, "decoder_sampling_w", 0)
+
+    if decoder_sampling != 0.0:
+        # back compatibility w/ fixed decoder sampling parameter
+        decoder_sampling_b = decoder_sampling
+        decoder_sampling_a = 0.0
+    del decoder_sampling
+
     decoder_sampling_greedy = getattr(opt, "decoder_sampling_greedy", False)
     decoder_sampling_validation = getattr(opt, "decoder_sampling_validation", 0)
     parallel_sampling_k = getattr(opt, "parallel_sampling_k", 0)
@@ -67,7 +77,9 @@ def build_trainer(opt, device_id, model, fields, optim, model_saver=None):
                            average_every=average_every,
                            model_dtype=opt.model_dtype,
                            gpt2_params_std=opt.gpt2_params_std,
-                           decoder_sampling=decoder_sampling,
+                           decoder_sampling_a=decoder_sampling_a,
+                           decoder_sampling_b=decoder_sampling_b,
+                           decoder_sampling_w=decoder_sampling_w,
                            decoder_sampling_greedy=decoder_sampling_greedy,
                            decoder_sampling_validation=decoder_sampling_validation,
                            parallel_sampling_k=parallel_sampling_k)
@@ -104,11 +116,15 @@ class Trainer(object):
                  norm_method="sents", grad_accum_count=1, n_gpu=1, gpu_rank=1,
                  gpu_verbose_level=0, report_manager=None, model_saver=None,
                  average_decay=0, average_every=1, model_dtype='fp32', gpt2_params_std=-1,
-                 decoder_sampling=0.0,
+                 decoder_sampling_a=0.0,
+                 decoder_sampling_b=0.0,
+                 decoder_sampling_w=0,
                  decoder_sampling_greedy=False,
                  decoder_sampling_validation=0,
                  parallel_sampling_k=0):
-        self.decoder_sampling = decoder_sampling
+        self.decoder_sampling_a = decoder_sampling_a
+        self.decoder_sampling_b = decoder_sampling_b
+        self.decoder_sampling_w = decoder_sampling_w
         self.decoder_sampling_greedy = decoder_sampling_greedy
         self.decoder_sampling_validation = decoder_sampling_validation
         self.parallel_sampling_k = parallel_sampling_k
@@ -142,6 +158,19 @@ class Trainer(object):
 
         # Set model in training mode.
         self.model.train()
+
+    def sampling_probability(self):
+        def _linear(x, a, b):
+            return (a/100) * x + b
+
+        x = self.optim.training_step
+        a = self.decoder_sampling_a / 100
+        b = self.decoder_sampling_b
+
+        if x >= self.decoder_sampling_w:
+            return _linear(x, a, b)
+        else:
+            return 0.0
 
     def _accum_batches(self, iterator):
         batches = []
@@ -202,7 +231,7 @@ class Trainer(object):
         else:
             logger.info('Start training loop and validate every %d steps...',
                         valid_steps)
-        logger.info("Decoder sampling: %.3f" % self.decoder_sampling)
+        logger.info("Decoder sampling: [a=%f, b=%.3f]" % (self.decoder_sampling_a, self.decoder_sampling_b))
         total_stats = onmt.utils.Statistics()
         report_stats = onmt.utils.Statistics()
         self._start_report_manager(start_time=total_stats.start_time)
@@ -388,9 +417,12 @@ class Trainer(object):
                 
                 # EXPERIMENTAL DECODER SAMPLING
                 assert self.train_loss.tgt_vocab is not None
+                _prob = self.sampling_probability()
+                report_stats.sampling_prob = _prob
+
                 self.model.decoder._loss = self.train_loss
                 self.model.decoder._batch = batch
-                self.model.decoder._decoder_sampling = self.decoder_sampling
+                self.model.decoder._decoder_sampling = _prob
                 self.model.decoder._parallel_sampling_k = self.parallel_sampling_k
                 self.model.decoder._decoder_greedy = self.decoder_sampling_greedy
 

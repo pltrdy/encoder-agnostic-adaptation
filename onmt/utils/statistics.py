@@ -17,11 +17,12 @@ class Statistics(object):
     * elapsed time
     """
 
-    def __init__(self, loss=0, n_words=0, n_correct=0):
+    def __init__(self, loss=0, n_words=0, n_correct=0, sampling_prob=0.0):
         self.loss = loss
         self.n_words = n_words
         self.n_correct = n_correct
         self.n_src_words = 0
+        self.sampling_prob = 0.0
         self.start_time = time.time()
 
     @staticmethod
@@ -115,12 +116,13 @@ class Statistics(object):
             step_fmt = "%s/%5d" % (step_fmt, num_steps)
         logger.info(
                 ("Step %s; acc: %6.2f; ppl: %5.2f; xent: %4.3f; " +
-             "lr: %7.5f; %3.0f/%3.0f tok/s; %6.0f sec")
+             "lr: %7.5f; p: %2.2f%%; %3.0f/%3.0f tok/s; %6.0f sec")
             % (step_fmt,
                self.accuracy(),
                self.ppl(),
                self.xent(),
                learning_rate,
+               100*self.sampling_prob,
                self.n_src_words / (t + 1e-5),
                self.n_words / (t + 1e-5),
                time.time() - start))
@@ -134,3 +136,4 @@ class Statistics(object):
         writer.add_scalar(prefix + "/accuracy", self.accuracy(), step)
         writer.add_scalar(prefix + "/tgtper", self.n_words / t, step)
         writer.add_scalar(prefix + "/lr", learning_rate, step)
+        writer.add_scalar(prefix + "/sampling_probability", learning_rate, step)
