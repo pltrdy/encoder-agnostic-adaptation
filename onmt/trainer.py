@@ -324,10 +324,14 @@ class Trainer(object):
         Returns:
             :obj:`nmt.Statistics`: validation loss statistics
         """
+        valid_model = self.model
         if moving_average:
-            valid_model = deepcopy(self.model)
+            # swap model params w/ moving average
+            # (and keep the original parameters)
+            model_params_data = []
             for avg, param in zip(self.moving_average,
                                   valid_model.parameters()):
+                model_params_data.append(param.data)
                 param.data = avg.data.half() if self.model_dtype == "fp16" \
                     else avg.data
         else:
@@ -369,10 +373,10 @@ class Trainer(object):
                 stats.update(batch_stats)
 
         if moving_average:
-            del valid_model
-        else:
-            # Set model back to training mode.
-            valid_model.train()
+            for param_data, param in zip(model_params_data,
+                                         self.model.parameters()):
+                param.data = param_data
+        valid_model.train()
 
         return stats
 
