@@ -161,13 +161,14 @@ class Trainer(object):
 
     def sampling_probability(self):
         def _linear(x, a, b):
-            return (a/100) * x + b
+            return a * x + b
 
         x = self.optim.training_step
         a = self.decoder_sampling_a / 100
         b = self.decoder_sampling_b
 
         if x >= self.decoder_sampling_w:
+            x -= self.decoder_sampling_w
             return _linear(x, a, b)
         else:
             return 0.0

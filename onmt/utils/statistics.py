@@ -128,7 +128,8 @@ class Statistics(object):
                time.time() - start))
         sys.stdout.flush()
 
-    def log_tensorboard(self, prefix, writer, learning_rate, step):
+    def log_tensorboard(self, prefix, writer, learning_rate, step,
+                        sampling_prob):
         """ display statistics to tensorboard """
         t = self.elapsed_time()
         writer.add_scalar(prefix + "/xent", self.xent(), step)
@@ -136,4 +137,4 @@ class Statistics(object):
         writer.add_scalar(prefix + "/accuracy", self.accuracy(), step)
         writer.add_scalar(prefix + "/tgtper", self.n_words / t, step)
         writer.add_scalar(prefix + "/lr", learning_rate, step)
-        writer.add_scalar(prefix + "/sampling_probability", learning_rate, step)
+        writer.add_scalar(prefix + "/sampling_probability", 100*(self.sampling_prob), step)
