@@ -35,6 +35,7 @@ class PositionalEncoding(nn.Module):
         pe = pe.unsqueeze(1) # [max_len, 1, dim]
         super(PositionalEncoding, self).__init__()
         self.register_buffer('pe', pe)
+        
         self.dropout = nn.Dropout(p=dropout)
         self.dim = dim
 

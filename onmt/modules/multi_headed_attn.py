@@ -65,6 +65,7 @@ class MultiHeadedAttention(nn.Module):
         self.linear_query = nn.Linear(model_dim,
                                       head_count * self.dim_per_head)
         self.softmax = nn.Softmax(dim=-1)
+        
         self.dropout = nn.Dropout(dropout)
         self.final_linear = nn.Linear(model_dim, model_dim)
 

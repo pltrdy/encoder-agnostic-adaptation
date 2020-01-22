@@ -188,6 +188,7 @@ def model_opts(parser):
                    "(cnn_kernel_width, 1) in conv layer")
 
     group.add("--decoder_sampling_greedy", action="store_true")
+    group.add("--decoder_sampling_sequence", "-decoder_sampling_sequence", action="store_true")
     group.add("--decoder_sampling", "-decoder_sampling", type=float, default=0.0,
              help="Fixed probability (same as b w/ a=0.0)")
     group.add("--decoder_sampling_a", "-decoder_sampling_a", type=float, default=0.0,

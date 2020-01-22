@@ -134,7 +134,8 @@ class CopyGenerator(nn.Module):
                 mul_attn = attn
 
             mul_attn = torch.mul(mul_attn, p_copy)
-
+        if mul_attn.dtype != src_map.dtype:
+            src_map = src_map.type(mul_attn.dtype)
         copy_prob = torch.bmm(
             mul_attn.view(-1, batch, slen).transpose(0, 1),
             src_map.transpose(0, 1)

@@ -53,7 +53,23 @@ class ArgumentParser(cfargparse.ArgumentParser):
         if model_opt.position_encoding_learned:
             model_opt.position_encoding_learned_enc = True
             model_opt.position_encoding_learned_dec = True
-        
+
+        if hasattr(model_opt, "attention_dropout"):
+            model_opt.attn_dropout = model_opt.attention_dropout
+            del model_opt.attention_dropout
+
+        def dropout_list_to_int(model_opt, dropout_key):
+            dropout = getattr(model_opt, dropout_key)
+            # ONMT-py compatibility
+            if isinstance(dropout, list):
+                assert len(dropout) == 1
+                print("Fixing dropout from ", dropout, "to", dropout[0])
+                dropout = dropout[0]
+                setattr(model_opt, dropout_key, dropout)
+        for dropout_key in ["dropout", "attn_dropout"]:
+            dropout_list_to_int(model_opt, dropout_key)
+
+
     @classmethod
     def validate_model_opts(cls, model_opt):
         assert model_opt.model_type in ["text", "img", "audio", 'imgvec', 'none'], \

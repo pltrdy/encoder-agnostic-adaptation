@@ -55,7 +55,7 @@ def build_trainer(opt, device_id, model, fields, optim, model_saver=None):
     decoder_sampling_a = getattr(opt, "decoder_sampling_a", 0.0)
     decoder_sampling_b = getattr(opt, "decoder_sampling_b", 0.0)
     decoder_sampling_w = getattr(opt, "decoder_sampling_w", 0)
-
+    decoder_sampling_sequence = getattr(opt, "decoder_sampling_sequence", False)
     if decoder_sampling != 0.0:
         # back compatibility w/ fixed decoder sampling parameter
         decoder_sampling_b = decoder_sampling
@@ -81,6 +81,7 @@ def build_trainer(opt, device_id, model, fields, optim, model_saver=None):
                            decoder_sampling_b=decoder_sampling_b,
                            decoder_sampling_w=decoder_sampling_w,
                            decoder_sampling_greedy=decoder_sampling_greedy,
+                           decoder_sampling_sequence=decoder_sampling_sequence,
                            decoder_sampling_validation=decoder_sampling_validation,
                            parallel_sampling_k=parallel_sampling_k)
     return trainer
@@ -121,13 +122,16 @@ class Trainer(object):
                  decoder_sampling_w=0,
                  decoder_sampling_greedy=False,
                  decoder_sampling_validation=0,
+                 decoder_sampling_sequence=False,
                  parallel_sampling_k=0):
         self.decoder_sampling_a = decoder_sampling_a
         self.decoder_sampling_b = decoder_sampling_b
         self.decoder_sampling_w = decoder_sampling_w
         self.decoder_sampling_greedy = decoder_sampling_greedy
         self.decoder_sampling_validation = decoder_sampling_validation
+        self.decoder_sampling_sequence = decoder_sampling_sequence
         self.parallel_sampling_k = parallel_sampling_k
+
         
         # Basic attributes.
         self.model = model
@@ -232,7 +236,7 @@ class Trainer(object):
         else:
             logger.info('Start training loop and validate every %d steps...',
                         valid_steps)
-        logger.info("Decoder sampling: [a=%f, b=%.3f]" % (self.decoder_sampling_a, self.decoder_sampling_b))
+        logger.info("Decoder sampling: [a=%f, b=%.3f, seq=%s]" % (self.decoder_sampling_a, self.decoder_sampling_b, self.decoder_sampling_sequence))
         total_stats = onmt.utils.Statistics()
         report_stats = onmt.utils.Statistics()
         self._start_report_manager(start_time=total_stats.start_time)
@@ -362,7 +366,7 @@ class Trainer(object):
                 valid_model.decoder._decoder_sampling = decoder_sampling
                 valid_model.decoder._parallel_sampling_k = self.decoder_sampling_validation
                 valid_model.decoder._decoder_greedy = True
-                
+ 
                 outputs, attns = valid_model(src, tgt, src_lengths, 
                                              tgt_lengths=tgt_lengths)
 
@@ -430,6 +434,7 @@ class Trainer(object):
                 self.model.decoder._decoder_sampling = _prob
                 self.model.decoder._parallel_sampling_k = self.parallel_sampling_k
                 self.model.decoder._decoder_greedy = self.decoder_sampling_greedy
+                self.model.decoder._decoder_sampling_sequence = self.decoder_sampling_sequence
 
                 outputs, attns = self.model(src, tgt, src_lengths, bptt=bptt, tgt_lengths=tgt_lengths)
                 bptt = True

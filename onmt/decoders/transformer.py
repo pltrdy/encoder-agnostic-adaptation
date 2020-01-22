@@ -455,6 +455,7 @@ class TransformerDecoder(DecoderBase):
 
         sample_prob = getattr(self, '_decoder_sampling', 0.0)
         decoder_sampling_k = getattr(self, '_parallel_sampling_k', 1)
+        decoder_sampling_sequence = getattr(self, '_decoder_sampling_sequence', False)
 
         if sample_prob != 0.0 and decoder_sampling_k == 0:
             raise ValueError("parallel_sampling_k can't be 0 w/ decoder_sampling != 0.0 (%f)" % sample_prob)
@@ -553,6 +554,20 @@ class TransformerDecoder(DecoderBase):
                     pred_t = (scores_data.max(dim=1)).indices.view(-1, 1).to(tgt.device)
                 # print("[k=%d] pred" % decoder_sampling_k, _loss._unbottle(pred_t, _batch.batch_size)[:dsteps, :dinputs])
                 pred_prob = torch.rand(pred_t.size()).to(tgt.device)
+
+                if decoder_sampling_sequence:
+                    # threshold the probability for the whole sequence
+                    # i.e. prob is either 1 or 0 based on pred_prob[0]
+                    
+                    # we only use the first value to test
+                    # 1=>sample the whole sequence ; 0=>do not sample
+                    switch = (pred_prob.view(-1)[0] < sample_prob).float()
+                    
+                    # switch=1 => all probs to 0
+                    # (so it's < sample prob, so sampled)
+                    pred_prob.gt_(switch)
+                    
+
                 # print("sample prob: %f" % sample_prob)
                 # print(pred_prob)
                 pred_mask = (pred_prob < sample_prob).long()

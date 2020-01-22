@@ -118,7 +118,7 @@ def main(opt, device_id):
             vocab, opt.model_type, dynamic_dict=opt.copy_attn)
     else:
         fields = vocab
-
+    assert fields["src"].base_field.vocab == fields["tgt"].base_field.vocab
     # Report src and tgt vocab sizes, including for features
     sides = ['tgt'] if opt.model_type == 'none' else ['src', 'tgt']
     for side in sides:
@@ -146,6 +146,10 @@ def main(opt, device_id):
     if not opt.train_from and opt.gpt2_params_path is not None:
         checkpoint = None
 
+    import sys
+    import time
+    sys.stdout.flush()
+    time.sleep(4)
     # Build optimizer.
     optim = Optimizer.from_opt(model, opt, checkpoint=checkpoint)
 

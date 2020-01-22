@@ -157,6 +157,7 @@ def build_base_model(model_opt, fields, gpu, checkpoint=None, gpu_id=None):
     tgt_emb = build_embeddings(model_opt, tgt_field, for_encoder=False)
 
     # Share the embedding matrix - preprocess with share_vocab required.
+    print(model_opt.share_embeddings ,src_field.base_field.vocab == tgt_field.base_field.vocab)
     if model_opt.share_embeddings:
         # src/tgt vocab should be the same if `-share_vocab` is specified.
         assert src_field.base_field.vocab == tgt_field.base_field.vocab, \
